@@ -1,148 +1,365 @@
 {assign} = require 'lodash'
-pipeline = require '../src/pipeline'
+Pipeline = require '../src'
+Promise = Pipeline # just for fun....
 
 describe 'Pipeline Tests', ->
 
   describe 'Promise', ->
 
-    it 'should provide fulfill and reject', (done) ->
-      new pipeline.Promise (fulfill, reject) ->
-        fulfill.should.be.a 'function'
-        reject.should.be.a 'function'
-        done()
+    describe '#resolve', ->
 
-    it 'should handle fulfill', (done) ->
-      expected = foo: 'bar'
-      prom = new pipeline.Promise (fulfill, reject) ->
-        fulfill expected
-      prom.then (actual) ->
-        actual.should.eql expected
-        done()
+      it 'should immediately resolve', (done) ->
+        expected = foo: 'bar'
+        Promise
+          .resolve expected
+          .then (actual) ->
+            actual.should.eql actual
+            done()
+          .catch done
 
-    it 'should handle reject', (done) ->
-      expected = 'some error'
-      prom = new pipeline.Promise (fulfill, reject) ->
-        reject expected
-      prom.catch (actual) ->
-        actual.should.eql expected
-        done()
+      it 'should resolve later', (done) ->
+        expected = foo: 'bar'
+        prom = Promise.resolve(expected)
+        later = ->
+          prom
+            .then (actual) ->
+              actual.should.eql actual
+              done()
+            .catch done
+        setTimeout later, 10
 
-    it 'should handle reject with fulfill', (done) ->
-      expected = 'some error'
-      prom = new pipeline.Promise (fulfill, reject) ->
-        reject expected
-      prom
-        .then ->
+    describe '#source', ->
+
+      it 'should immediately resolve', (done) ->
+        expected = foo: 'bar'
+        Promise
+          .source expected
+          .then (actual) ->
+            actual.should.eql actual
+            done()
+          .catch done
+
+      it 'should resolve later', (done) ->
+        expected = foo: 'bar'
+        prom = Promise.source(expected)
+        later = ->
+          prom
+            .then (actual) ->
+              actual.should.eql actual
+              done()
+            .catch done
+        setTimeout later, 10
+
+    describe '#reject', ->
+
+      it 'should immediately reject', (done) ->
+        expected = 'some error'
+        Promise
+          .reject expected
+          .then ->
+            done 'should not be called'
+          .catch (actual) ->
+            actual.should.eql actual
+            done()
+
+      it 'should reject later', (done) ->
+        expected = foo: 'bar'
+        prom = Promise.resolve(expected)
+        later = ->
+          prom
+            .then (actual) ->
+              actual.should.eql actual
+              done()
+            .catch done
+        setTimeout later, 10
+
+
+    describe 'constructed', ->
+
+      it 'should provide fulfill and reject', (done) ->
+        new Promise (fulfill, reject) ->
+          fulfill.should.be.a 'function'
+          reject.should.be.a 'function'
+          done()
+
+      it 'should handle fulfill', (done) ->
+        expected = foo: 'bar'
+        prom = new Promise (fulfill, reject) ->
+          fulfill expected
+        prom.then (actual) ->
+          actual.should.eql expected
+          done()
+
+      it 'should handle reject', (done) ->
+        expected = 'some error'
+        prom = new Promise (fulfill, reject) ->
+          reject expected
+        prom.catch (actual) ->
+          actual.should.eql expected
+          done()
+
+      it 'should handle reject with fulfill', (done) ->
+        expected = 'some error'
+        prom = new Promise (fulfill, reject) ->
+          reject expected
+        prom
+          .then ->
+            done 'should not be called'
+          .catch (actual) ->
+            actual.should.eql expected
+            done()
+
+      it 'should handle catch for reject in then', (done) ->
+        expected = 'some error'
+        prom = new Promise (fulfill, reject) ->
+          fulfill foo: 'bar'
+        prom
+          .then ->
+            Promise.reject expected
+          .catch (actual) ->
+            actual.should.eql expected
+            done()
+
+      it 'should handle then for promise in catch', (done) ->
+        expected = for: 'bar'
+        prom = new Promise (fulfill, reject) ->
+          reject 'some error'
+        prom
+          .catch (err) ->
+            Promise.resolve expected
+          .then (actual)->
+            actual.should.eql actual
+            done()
+
+    describe '#all', ->
+
+      it 'should handle empty promise list', (done) ->
+        Promise.all []
+          .then (data) ->
+            expect(data).to.eql []
+            done()
+          .catch done
+
+      it 'should handle simple item', (done) ->
+        Promise.all [ 1 ]
+          .then (data) ->
+            expect(data).to.eql [1]
+            done()
+          .catch done
+
+      it 'should handle simple items', (done) ->
+        Promise.all [ 1, 2, 3 ]
+          .then (data) ->
+            expect(data).to.eql [1, 2, 3]
+            done()
+          .catch done
+
+      it 'should handle function', (done) ->
+        Promise.all [ -> 1 ]
+          .then (data) ->
+            expect(data).to.eql [1]
+            done()
+          .catch done
+
+      it 'should handle functions', (done) ->
+        Promise.all [
+            -> 1
+            -> 2
+            -> 3
+        ]
+          .then (data) ->
+            expect(data).to.eql [1, 2, 3]
+            done()
+          .catch done
+
+      it 'should handle promise', (done) ->
+        Promise.all [ Promise.resolve(1) ]
+          .then (data) ->
+            expect(data).to.eql [1]
+            done()
+          .catch done
+
+      it 'should handle promises', (done) ->
+        Promise.all [ Promise.resolve(1), Promise.resolve(2), Promise.resolve(3) ]
+          .then (data) ->
+            expect(data).to.eql [1, 2, 3]
+            done()
+          .catch done
+
+      it 'should handle mix', (done) ->
+        Promise.all [
+          1
+          -> 2
+          Promise.resolve(3)
+        ]
+          .then (data) ->
+            expect(data).to.eql [1, 2, 3]
+            done()
+          .catch done
+
+      it 'should handle error', (done) ->
+        expected = 'some error'
+        Promise.all [ Promise.resolve(1), Promise.reject(expected), Promise.resolve(3) ]
+          .then (data) ->
+            done 'should not be called'
+          .catch (actual) ->
+            actual.should.eql expected
+            done()
+
+  describe '#race', ->
+
+    it 'should handle empty promise list', (done) ->
+      Promise.race []
+        .then (data) ->
+          expect(data).to.eql undefined
+          done()
+        .catch done
+
+    it 'should handle simple item', (done) ->
+      Promise.race [ 1 ]
+        .then (data) ->
+          expect(data).to.eql 1
+          done()
+        .catch done
+
+    it 'should handle function', (done) ->
+      Promise.race [ -> 1 ]
+        .then (data) ->
+          expect(data).to.eql 1
+          done()
+        .catch done
+
+    it 'should handle promise', (done) ->
+      Promise.race [ Promise.resolve(1) ]
+        .then (data) ->
+          expect(data).to.eql 1
+          done()
+        .catch done
+
+    it 'should return first complete', (done) ->
+      Promise.race [
+        new Promise (fulfill, reject) ->
+          complete = ->
+            fulfill 1
+          setTimeout complete, 10
+        new Promise (fulfill, reject) ->
+          complete = ->
+            fulfill 2
+          setTimeout complete, 2
+        new Promise (fulfill, reject) ->
+          complete = ->
+            fulfill 3
+          setTimeout complete, 6
+      ]
+        .then (data) ->
+          expect(data).to.eql 2
+          done()
+        .catch done
+
+    it 'should handle error', (done) ->
+      expected  = 'some error'
+      Promise.race [
+         new Promise (fulfill, reject) ->
+           complete = ->
+             fulfill 1
+           setTimeout complete, 10
+         new Promise (fulfill, reject) ->
+           complete = ->
+             reject expected
+           setTimeout complete, 2
+         new Promise (fulfill, reject) ->
+           complete = ->
+             fulfill 3
+           setTimeout complete, 6
+      ]
+        .then (data) ->
           done 'should not be called'
         .catch (actual) ->
           actual.should.eql expected
           done()
-
-    it 'should handle catch for reject in then', (done) ->
-      expected = 'some error'
-      prom = new pipeline.Promise (fulfill, reject) ->
-        fulfill foo: 'bar'
-      prom
-        .then ->
-          Promise.reject expected
-        .catch (actual) ->
-          actual.should.eql expected
-          done()
-
-    it 'should handle then for promise in catch', (done) ->
-      expected = for: 'bar'
-      prom = new pipeline.Promise (fulfill, reject) ->
-        reject 'some error'
-      prom
-        .catch (err) ->
-          Promise.resolve expected
-        .then (actual)->
-          actual.should.eql actual
-          done()
-
 
   describe 'pipes', ->
 
     describe 'linear', ->
 
       it 'should handle no segments', (done) ->
-        context = {foo: 'bar'}
-        pipeline
-          .source context
+        data = {foo: 'bar'}
+        Pipeline
+          .source data
           .then (result) ->
-            result.should.equal context
+            result.should.equal data
             done()
           .catch done
 
       it 'should pipe with non promise func', (done) ->
-        context = {foo: 'bar'}
-        pipeline
-          .source context
+        data = {foo: 'bar'}
+        Pipeline
+          .source data
           .pipe (context) ->
             assign context, bar: 'baz'
           .then (result) ->
             result.should.eql foo: 'bar', bar: 'baz'
-            result.should.eql context
+            result.should.eql data
             done()
           .catch done
 
       it 'should pipe with multiple non promise func', (done) ->
-        context = {foo: 'bar'}
-        pipeline
-          .source context
+        data = {foo: 'bar'}
+        Pipeline
+          .source data
           .pipe (context) ->
             assign context, bar: 'baz'
           .pipe (context) ->
             assign context, baz: 'qak'
           .then (result) ->
             result.should.eql foo: 'bar', bar: 'baz', baz: 'qak'
-            result.should.eql context
+            result.should.eql data
             done()
           .catch done
 
       it 'should pipe with promise func', (done) ->
-        context = {foo: 'bar'}
-        pipeline
-          .source context
+        data = {foo: 'bar'}
+        Pipeline
+          .source data
           .pipe (context) ->
             Promise.resolve(assign context, bar: 'baz')
           .then (result) ->
             result.should.eql foo: 'bar', bar: 'baz'
-            result.should.eql context
+            result.should.eql data
             done()
           .catch done
 
       it 'should pipe with multiple promise func', (done) ->
-        context = {foo: 'bar'}
-        pipeline
-          .source context
+        data = {foo: 'bar'}
+        Pipeline
+          .source data
           .pipe (context) ->
             Promise.resolve(assign context, bar: 'baz')
           .pipe (context) ->
             Promise.resolve(assign context, baz: 'qak')
           .then (result) ->
             result.should.eql foo: 'bar', bar: 'baz', baz: 'qak'
-            result.should.eql context
+            result.should.eql data
             done()
           .catch done
 
       it 'should pipe with multiple mixed func', (done) ->
-        context = {foo: 'bar'}
-        pipeline
-          .source context
+        data = {foo: 'bar'}
+        Pipeline
+          .source data
           .pipe (context) ->
             Promise.resolve(assign context, bar: 'baz')
           .pipe (context) ->
             assign context, baz: 'qak'
           .then (result) ->
             result.should.eql foo: 'bar', bar: 'baz', baz: 'qak'
-            result.should.eql context
+            result.should.eql data
             done()
           .catch done
 
       it 'should pipe with multiple funcs', (done) ->
         data = {foo: 'bar'}
-        pipeline
+        Pipeline
           .source data
           .pipe [
               (context) -> Promise.resolve(assign context, bar: 'baz')
@@ -156,7 +373,7 @@ describe 'Pipeline Tests', ->
 
       it 'should pipe with undefined func', (done) ->
         data = {foo: 'bar'}
-        pipeline
+        Pipeline
           .source data
           .pipe undefined
           .then (result) ->
@@ -165,13 +382,13 @@ describe 'Pipeline Tests', ->
           .catch done
 
       it 'should handle error', (done) ->
-        context = {foo: 'bar'}
+        data = {foo: 'bar'}
         err_msg = 'Some error occured'
-        pipeline
-          .source context
-          .pipe (context) ->
-            assign context, baz: 'qak'
-          .pipe (context) ->
+        Pipeline
+          .source data
+          .pipe (data) ->
+            assign data, baz: 'qak'
+          .pipe (data) ->
             Promise.reject err_msg
           .then (result) ->
             done 'Should have been an error'
@@ -180,13 +397,13 @@ describe 'Pipeline Tests', ->
             done()
 
       it 'should handle early error', (done) ->
-        context = {foo: 'bar'}
+        data = {foo: 'bar'}
         err_msg = 'Some error occured'
-        pipeline
-          .source context
-          .pipe (context) ->
+        Pipeline
+          .source data
+          .pipe (data) ->
             Promise.reject err_msg
-          .pipe (context) ->
+          .pipe (data) ->
             assign context, baz: 'qak'
           .then (result) ->
             done 'Should have been an error'
@@ -197,7 +414,7 @@ describe 'Pipeline Tests', ->
     describe 'split pipes', ->
 
       it 'should handle a basic split and join', (done) ->
-        pipeline
+        Pipeline
           .source [1, 2, 3]
           .split()
           .join()
@@ -209,7 +426,7 @@ describe 'Pipeline Tests', ->
       it 'should handle a basic split and then', (done) ->
         source = [1, 2, 3]
         expected = source.length
-        pipeline
+        Pipeline
           .source source
           .split()
           .then (result) ->
@@ -219,7 +436,7 @@ describe 'Pipeline Tests', ->
           .catch done
 
       it 'should handle split with pipe', (done) ->
-        pipeline
+        Pipeline
           .source [1, 2, 3]
           .split()
           .pipe (item) ->
@@ -231,7 +448,7 @@ describe 'Pipeline Tests', ->
           .catch done
 
       it 'should handle split with multiple pipes', (done) ->
-        pipeline
+        Pipeline
           .source [1, 2, 3]
           .split()
             .pipe (item) ->
@@ -246,7 +463,7 @@ describe 'Pipeline Tests', ->
 
       it 'should handle split with error', (done) ->
         err_msg = 'Some error occured'
-        pipeline
+        Pipeline
           .source [1, 2, 3]
           .split()
           .pipe (item) ->
@@ -261,7 +478,7 @@ describe 'Pipeline Tests', ->
             done()
 
       it 'should handle a mapped split and join', (done) ->
-        pipeline
+        Pipeline
           .source stuff: [1, 2, 3]
           .split (data) -> data.stuff
           .join()
@@ -270,10 +487,20 @@ describe 'Pipeline Tests', ->
             done()
           .catch done
 
+      it 'should handle a split and mapped  join', (done) ->
+        Pipeline
+          .source [1, 2, 3]
+          .split()
+          .join (data) -> stuff: data
+          .then (results) ->
+            results.should.eql stuff: [1, 2, 3]
+            done()
+          .catch done
+
     describe '.map', ->
 
       it 'should handle map with single func', (done) ->
-        pipeline
+        Pipeline
           .source [1, 2, 3]
           .map (item) -> item + 10
           .then (results) ->
@@ -283,7 +510,7 @@ describe 'Pipeline Tests', ->
 
       it 'should handle multiple maps', (done) ->
         adder = (item) -> item + 10
-        pipeline
+        Pipeline
           .source [1, 2, 3]
           .map adder
           .map adder
@@ -295,7 +522,7 @@ describe 'Pipeline Tests', ->
 
       it 'should handle multiple map func', (done) ->
         adder = (item) -> item + 10
-        pipeline
+        Pipeline
           .source [1, 2, 3]
           .map [adder, adder, adder]
           .then (results) ->
@@ -303,10 +530,88 @@ describe 'Pipeline Tests', ->
             done()
           .catch done
 
+    describe '.all', ->
+
+      it 'should handle all with no funcs', (done) ->
+        Pipeline
+          .source 1
+          .all []
+          .then (results) ->
+            results.should.eql []
+            done()
+          .catch done
+
+      it 'should handle all with single func', (done) ->
+        Pipeline
+          .source 1
+          .all [(item) -> item + 10]
+          .then (results) ->
+            results.should.eql [11]
+            done()
+          .catch done
+
+      it 'should handle all with multiple funcs', (done) ->
+        Pipeline
+          .source 1
+          .all [
+            (item) -> item + 10
+            (item) -> item + 20
+            (item) -> item + 30
+          ]
+          .then (results) ->
+            results.should.eql [11, 21, 31]
+            done()
+          .catch done
+
+    describe '.race', ->
+
+      it 'should handle all with no funcs', (done) ->
+        Pipeline
+          .source 1
+          .race []
+          .then (results) ->
+            expect(results).to.eql undefined
+            done()
+          .catch done
+
+      it 'should handle race with single func', (done) ->
+        Pipeline
+          .source 1
+          .race [(item) -> item + 10]
+          .then (results) ->
+            results.should.eql 11
+            done()
+          .catch done
+
+      it 'should handle race with multiple funcs', (done) ->
+        Pipeline
+          .source 1
+          .race [
+            (item) ->
+              new Promise (fulfill, reject) ->
+                complete = ->
+                  fulfill item  + 1
+                setTimeout complete, 10
+            (item) ->
+              new Promise (fulfill, reject) ->
+                complete = ->
+                  fulfill item + 2
+                setTimeout complete, 2
+            (item) ->
+              new Promise (fulfill, reject) ->
+                complete = ->
+                  fulfill item  + 3
+                setTimeout complete, 10
+          ]
+          .then (results) ->
+            results.should.eql 3
+            done()
+          .catch done
+
     describe '.context', ->
 
       it 'should default context', (done) ->
-        pipeline
+        Pipeline
           .source {}
           .pipe (item) ->
             @.should.eql {}
@@ -320,7 +625,7 @@ describe 'Pipeline Tests', ->
         func = (item) ->
           context.should.eql @
           item
-        pipeline
+        Pipeline
           .source {}
           .context context
           .pipe func
@@ -333,12 +638,11 @@ describe 'Pipeline Tests', ->
         func = (item) ->
           context.should.eql @
           item
-        pipeline
+        Pipeline
           .source {}
           .context context
           .pipe func
-          .pipe ->
-            [1, 2, 3]
+          .pipe -> [1, 2, 3]
           .split()
             .pipe func
             .pipe func
