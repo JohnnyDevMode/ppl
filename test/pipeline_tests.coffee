@@ -18,17 +18,14 @@ describe 'Pipeline Tests', ->
       .split()
       .pipe (item) ->
         ps1++
-        console.log "Items1: %j", item
         item.items
       .split()
       .pipe (item) ->
         ps2++
-        console.log "Items2:", item
         total += item
         item
       .join()
       .pipe (data) ->
-        console.log "data: ", data
         data
       .join()
       .then (result) ->
@@ -476,7 +473,6 @@ describe 'Pipeline Tests', ->
           .source [1, 2, 3]
           .split()
           .pipe (item) ->
-            console.log item
             item + 10
           .join()
           .then (results) ->
@@ -494,7 +490,6 @@ describe 'Pipeline Tests', ->
               setTimeout next, 20
           .split()
           .pipe (item) ->
-            console.log item
             item + 10
           .join()
           .then (results) ->
@@ -678,7 +673,6 @@ describe 'Pipeline Tests', ->
                 setTimeout complete, 10
           ]
           .then (results) ->
-            console.log 'Here'
             results.should.eql 3
             done()
           .catch done

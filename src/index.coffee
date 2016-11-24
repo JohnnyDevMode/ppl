@@ -185,15 +185,7 @@ class SplitSegment extends Segment
     # console.log "Data : ", @incoming
     for item in @incoming
       segment = Pipeline.source(item).context @_context
-      if @template?
-        console.log @template
-        template_clone = @template._clone()
-        console.log template_clone
-
-        segment = segment.extend(template_clone)
-      # console.log 'here'
-      # console.log segment._context
-      # console.log segment
+      segment = segment.extend(@template._clone()) if @template?
       @child_pipes.push segment._last()
     @_fulfill @incoming
 
