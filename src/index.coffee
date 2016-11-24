@@ -34,8 +34,8 @@ State =
 class Segment
 
   constructor: (@_context={}) ->
-    @_state = State.Pending
-    @_wait_queue = []
+    @state = State.Pending
+    @next_segment = undefined
 
   context: (@_context) ->
     @
@@ -60,26 +60,33 @@ class Segment
     @_pipe undefined, reject
 
   split: (map_func) ->
-    if map_func?
-      @pipe(map_func).split()
-    else
-      @_await new SplitSegment(@_context)
+    return @pipe(map_func).split() if map_func?
+    @extend new SplitSegment @_context
 
   map: (func) ->
-    if func == undefined
-      @_pass()
+    return @_pass() if func == undefined
+    @split().pipe(func).join()
+
+  all: (items) -> @extend new AllSegment(items, @_context)
+
+  race: (items) -> @extend new RaceSegment(items, @_context)
+
+  join: (join_func) ->
+    if @_split_head?
+       @_split_head.join join_func
     else
-      @split().pipe(func).join()
+      @_pipe join_func
 
-  all: (items) -> @_await new AllSegment(items, @_context)
+  extend: (segment) ->
+    @_extend segment
 
-  race: (items) -> @_await new RaceSegment(items, @_context)
-
-  _await: (segment) ->
-    switch @_state
-      when State.Pending then @_wait_queue.push segment
+  _extend: (segment) ->
+    # console.log "#{@constructor.name} - extending with: #{segment.constructor.name} - state: #{@state}"
+    @next_segment = segment
+    switch @state
       when State.Fulfilled then segment._proceed_fulfill @_result
       when State.Rejected then segment._proceed_reject @_error
+    segment._split_head = @_split_head
     segment
 
   _proceed_fulfill: (data) ->
@@ -89,21 +96,35 @@ class Segment
     @_reject error
 
   _fulfill: (@_result) ->
-    switch @_state
+    switch @state
       when State.Rejected then throw 'Pipeline segment cannot be fulfilled, already rejected'
       when State.Fulfilled then throw 'Pipeline segment cannot be fulfilled, already fulfilled'
-    @_state = State.Fulfilled
-    segment._proceed_fulfill @_result for segment in @_wait_queue
+    @state = State.Fulfilled
+    @next_segment?._proceed_fulfill @_result
 
   _reject: (@_error) ->
-    throw 'Pipeline segment already rejected!' if @_state == State.Rejected
-    @_state = State.Rejected
-    segment._proceed_reject @_error for segment in @_wait_queue
+    throw 'Pipeline segment already rejected!' if @state == State.Rejected
+    @state = State.Rejected
+    @next_segment?._proceed_reject @_error
 
   _pipe: (fulfill, reject) ->
-    @_await new FuncSegment(fulfill, reject, @_context)
+    @extend new FuncSegment(fulfill, reject, @_context)
 
-  _pass: -> @_await new Segment @_context
+  _pass: -> @extend new Segment @_context
+
+  _clone: ->
+    clone = new @constructor()
+    clone._context = @_context
+    clone.extend @next_segment._clone() if @next_segment?
+    clone
+
+  _last: ->
+    current = @
+    while current?
+      next = current.next_segment
+      return current unless next?
+      current = next
+    @
 
 class FuncSegment extends Segment
 
@@ -130,37 +151,92 @@ class FuncSegment extends Segment
     else
       @_reject result
 
+  _clone: ->
+    clone = super()
+    clone.fulfill_func = @fulfill_func
+    clone.reject_func = @reject_func
+    clone
+
+splitCnt = 0
 class SplitSegment extends Segment
 
   constructor: (context) ->
     super context
+    @id = splitCnt++
+    # console.log "Split: #{@id}"
+    @_split_head = @
+    @child_pipes = []
+    @joined = false
+
+  extend: (segment) ->
+    # console.log "#{@constructor.name} - template set as: #{segment.constructor.name} - state: #{@state}"
+    @template = segment
+    segment._split_head = @
+    segment
+
+  _proceed_fulfill: (@incoming) ->
+    # console.log "Split fiulfill: #{@id}"
+    # console.log "Data: ", incoming
+    throw 'Can only split on Array context!' unless Array.isArray(incoming)
+    @_process_children() if @joined
+
+  _process_children: ->
+    # console.log "Split process : #{@id}"
+    # console.log "Data : ", @incoming
+    for item in @incoming
+      segment = Pipeline.source(item).context @_context
+      if @template?
+        console.log @template
+        template_clone = @template._clone()
+        console.log template_clone
+
+        segment = segment.extend(template_clone)
+      # console.log 'here'
+      # console.log segment._context
+      # console.log segment
+      @child_pipes.push segment._last()
+    @_fulfill @incoming
 
   join: (join_func) ->
-    segment = new Segment @_context
-    segment = segment.pipe(join_func) if join_func?
-    @_await segment
+    # console.log "Split join : #{@id}"
+    join_seg = new JoinSegment @, @_context
+    if join_func?
+      segment = @_extend(join_seg).pipe join_func
+    else
+      segment = @_extend join_seg
+    @joined = true
+    @_process_children() if @incoming?
+    segment
 
-  _pipe: (fulfill, reject) ->
-    @_await new EachSegment(fulfill, reject, @_context)
+  _clone: ->
+    clone = new SplitSegment @_context
+    clone.id = @id
+    clone.template = @template._clone() if @template?
+    if @next_segment and @next_segment.constructor.name == 'JoinSegment'
+      join = @next_segment._clone()
 
-class EachSegment extends SplitSegment
+      clone._extend join
+      clone.joined = true
+      join.split_segment = clone
+    clone
 
-  constructor: (@fulfill_func, @reject_func, context) ->
+class JoinSegment extends Segment
+
+  constructor: (@split_segment, context) ->
     super context
 
   _proceed_fulfill: (data) ->
-    throw 'Can only split on Array context!' unless Array.isArray(data)
+    # console.log "Join fiulfill: #{@split.id}"
+    # console.log "Data: ", data
     results = []
-    data = data.slice()
+    pipes = @split_segment.child_pipes
     process = =>
-      current = data.shift()
-      return @_fulfill results unless current?
-      segment = new FuncSegment @fulfill_func, @reject_func, @_context
-      segment.then (result) ->
+      pipe = pipes.shift()
+      return @_fulfill results unless pipe?
+      pipe.then (result) ->
         results.push result
         process()
-      segment.catch (err) => @_reject err
-      segment._proceed_fulfill current
+      pipe.catch (err) => @_reject err
     process()
 
 class AllSegment extends Segment
@@ -180,6 +256,11 @@ class AllSegment extends Segment
       promise.catch (err) => @_reject err
     process()
 
+  _clone: ->
+    clone = super()
+    clone.items = @item
+    clone
+
 class RaceSegment extends Segment
 
   constructor: (@items, context) ->
@@ -191,14 +272,20 @@ class RaceSegment extends Segment
     return @_fulfill undefined unless promises?.length
     complete = false
     for promise in promises
-      promise.then (result) =>
-        return if complete
-        complete = true
-        @_fulfill result
-      promise.catch (err) =>
-        return if complete
-        complete = true
-        @_reject err
+      promise
+        .then (result) =>
+          return if complete
+          complete = true
+          @_fulfill result
+        .catch (err) =>
+          return if complete
+          complete = true
+          @_reject err
+
+  _clone: ->
+    clone = super()
+    clone.items = @item
+    clone
 
 class Pipeline extends Segment
 

@@ -4,6 +4,39 @@ Promise = Pipeline # just for fun....
 
 describe 'Pipeline Tests', ->
 
+  it 'I will just leave this here', (done) ->
+    data = [
+      {items: [1, 2, 3]}
+      {items: [1, 2, 3]}
+      {items: [1, 2, 3]}
+    ]
+    total = 0
+    ps1 = 0
+    ps2 = 0
+    Pipeline
+      .source data
+      .split()
+      .pipe (item) ->
+        ps1++
+        console.log "Items1: %j", item
+        item.items
+      .split()
+      .pipe (item) ->
+        ps2++
+        console.log "Items2:", item
+        total += item
+        item
+      .join()
+      .pipe (data) ->
+        console.log "data: ", data
+        data
+      .join()
+      .then (result) ->
+        ps1.should.eql 3
+        ps2.should.eql 9
+        total.should.eql 18
+        done()
+
   describe 'Promise', ->
 
     describe '#resolve', ->
@@ -423,16 +456,19 @@ describe 'Pipeline Tests', ->
             done()
           .catch done
 
-      it 'should handle a basic split and then', (done) ->
-        source = [1, 2, 3]
-        expected = source.length
+      it 'should handle a basic split and join with late resolve', (done) ->
         Pipeline
-          .source source
+          .source [1, 2, 3]
+          .pipe (data) ->
+            new Promise (fulfill, reject) ->
+              next = ->
+                fulfill data
+              setTimeout next, 20
           .split()
-          .then (result) ->
-            index = source.length - expected
-            result.should.eql source[index]
-            done() if --expected == 0
+          .join()
+          .then (results) ->
+            results.should.eql [1, 2, 3]
+            done()
           .catch done
 
       it 'should handle split with pipe', (done) ->
@@ -440,6 +476,25 @@ describe 'Pipeline Tests', ->
           .source [1, 2, 3]
           .split()
           .pipe (item) ->
+            console.log item
+            item + 10
+          .join()
+          .then (results) ->
+            results.should.eql [11, 12, 13]
+            done()
+          .catch done
+
+      it 'should handle split with pipe and late resolved', (done) ->
+        Pipeline
+          .source [1, 2, 3]
+          .pipe (data) ->
+            new Promise (fulfill, reject) ->
+              next = ->
+                fulfill data
+              setTimeout next, 20
+          .split()
+          .pipe (item) ->
+            console.log item
             item + 10
           .join()
           .then (results) ->
@@ -451,10 +506,29 @@ describe 'Pipeline Tests', ->
         Pipeline
           .source [1, 2, 3]
           .split()
-            .pipe (item) ->
-              item + 10
-            .pipe (item) ->
-              item + 20
+          .pipe (item) ->
+            item + 10
+          .pipe (item) ->
+            item + 20
+          .join()
+          .then (results) ->
+            results.should.eql [31, 32, 33]
+            done()
+          .catch done
+
+      it 'should handle split with multiple pipes and late resolve', (done) ->
+        Pipeline
+          .source [1, 2, 3]
+          .pipe (data) ->
+            new Promise (fulfill, reject) ->
+              next = ->
+                fulfill data
+              setTimeout next, 100
+          .split()
+          .pipe (item) ->
+            item + 10
+          .pipe (item) ->
+            item + 20
           .join()
           .then (results) ->
             results.should.eql [31, 32, 33]
@@ -604,6 +678,7 @@ describe 'Pipeline Tests', ->
                 setTimeout complete, 10
           ]
           .then (results) ->
+            console.log 'Here'
             results.should.eql 3
             done()
           .catch done
@@ -638,14 +713,14 @@ describe 'Pipeline Tests', ->
         func = (item) ->
           context.should.eql @
           item
-        Pipeline
+        prom = Pipeline
           .source {}
           .context context
           .pipe func
           .pipe -> [1, 2, 3]
           .split()
-            .pipe func
-            .pipe func
+          .pipe func
+          .pipe func
           .join()
           .pipe func
           .then -> done()
