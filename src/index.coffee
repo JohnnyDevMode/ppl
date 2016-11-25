@@ -176,7 +176,7 @@ class SplitSegment extends Segment
   _proceed_fulfill: (@incoming) ->
     # console.log "Split fiulfill: #{@id}"
     # console.log "Data: ", incoming
-    throw 'Can only split on Array context!' unless Array.isArray(incoming)
+    throw 'Can only split on Array context!' unless Array.isArray(@incoming)
     @_process_children() if @joined
 
   _process_children: ->
