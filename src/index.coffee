@@ -1,22 +1,11 @@
-
-##
-#
-#  Promise like pipeline implementation that supports standard piping and splitting and joining multiple child pipelines.
-#
-##
-
-# utils
-head = (array) ->
-  array[0]
-
-tail = (array) ->
-  array.slice(1)
+{head, tail} = require './utils'
 
 as_promise = (thing, data, context={}) ->
   if thing?.then?
     thing
   else if typeof thing is 'function'
-    prom = new FuncSegment thing, undefined, context
+    prom = new FuncSegment thing, undefined
+    prom._context = context
     prom._proceed_fulfill data
     prom
   else
@@ -33,12 +22,11 @@ State =
 ##
 class Segment
 
-  constructor: (@_context={}) ->
+  constructor: ->
+    @_context= {}
     @state = State.Pending
-    @next_segment = undefined
 
-  context: (@_context) ->
-    @
+  context: (@_context) -> @
 
   pipe: (func) ->
     if Array.isArray func
@@ -50,50 +38,46 @@ class Segment
     else
       @_pipe func
 
-  then: (fulfill, reject) ->
-    @_pipe fulfill, reject
+  then: (fulfill, reject) -> @_pipe fulfill, reject
 
-  done: (fulfill, reject) ->
-    @then fulfill, reject
+  done: (fulfill, reject) -> @then fulfill, reject
 
-  catch: (reject) ->
-    @_pipe undefined, reject
+  catch: (reject) -> @_pipe undefined, reject
 
   split: (map_func) ->
     return @pipe(map_func).split() if map_func?
-    @extend new SplitSegment @_context
+    @extend new SplitSegment()
 
   map: (func) ->
     return @_pass() if func == undefined
     @split().pipe(func).join()
 
-  all: (items) -> @extend new AllSegment(items, @_context)
+  all: (items) -> @extend new AllSegment(items)
 
-  race: (items) -> @extend new RaceSegment(items, @_context)
+  race: (items) -> @extend new RaceSegment(items)
 
   join: (join_func) ->
-    if @_split_head?
-       @_split_head.join join_func
-    else
-      @_pipe join_func
+    return @_split_head.join join_func if @_split_head?
+    @_pipe join_func
 
-  extend: (segment) ->
-    @_extend segment
+  extend: (segment) -> @_extend segment
 
   _extend: (segment) ->
     # console.log "#{@constructor.name} - extending with: #{segment.constructor.name} - state: #{@state}"
     @next_segment = segment
+    segment.prev_segment = @
+    segment._context = @_context
+    segment._split_head = @_split_head
     switch @state
       when State.Fulfilled then segment._proceed_fulfill @_result
       when State.Rejected then segment._proceed_reject @_error
-    segment._split_head = @_split_head
     segment
 
-  _proceed_fulfill: (data) ->
-    @_fulfill data
+  toString: -> "#{@constructor.name} (state: #{@state}, result: #{@_result}, error: #{@_error})"
 
-  _proceed_reject: (error) ->
-    @_reject error
+  _proceed_fulfill: (data) -> @_fulfill data
+
+  _proceed_reject: (error) -> @_reject error
 
   _fulfill: (@_result) ->
     switch @state
@@ -107,16 +91,23 @@ class Segment
     @state = State.Rejected
     @next_segment?._proceed_reject @_error
 
-  _pipe: (fulfill, reject) ->
-    @extend new FuncSegment(fulfill, reject, @_context)
+  _pipe: (fulfill, reject) -> @extend new FuncSegment(fulfill, reject)
 
-  _pass: -> @extend new Segment @_context
+  _pass: -> @extend new Segment()
 
   _clone: ->
     clone = new @constructor()
     clone._context = @_context
     clone.extend @next_segment._clone() if @next_segment?
     clone
+
+  _first: ->
+    current = @
+    while current?
+      prev = current.prev_segment
+      return current unless prev?
+      current = prev
+    @
 
   _last: ->
     current = @
@@ -126,10 +117,21 @@ class Segment
       current = next
     @
 
+  _dump_pipeline: ->
+    out = "Pipeline\n"
+    current = @_first()
+    while current?
+      if current == @
+        out += "|* #{current}\n"
+      else
+        out += "|  #{current}\n"
+      current = current.next_segment
+    out
+
 class FuncSegment extends Segment
 
-  constructor: (@fulfill_func, @reject_func, context) ->
-    super(context)
+  constructor: (@fulfill_func, @reject_func) ->
+    super()
 
   _proceed_fulfill: (data) ->
     return @_fulfill data unless @fulfill_func?
@@ -157,20 +159,17 @@ class FuncSegment extends Segment
     clone.reject_func = @reject_func
     clone
 
-splitCnt = 0
 class SplitSegment extends Segment
 
-  constructor: (context) ->
-    super context
-    @id = splitCnt++
-    # console.log "Split: #{@id}"
-    @_split_head = @
+  constructor: ->
+    super()
     @child_pipes = []
     @joined = false
 
   extend: (segment) ->
     # console.log "#{@constructor.name} - template set as: #{segment.constructor.name} - state: #{@state}"
     @template = segment
+    segment._context = @_context
     segment._split_head = @
     segment
 
@@ -191,22 +190,18 @@ class SplitSegment extends Segment
 
   join: (join_func) ->
     # console.log "Split join : #{@id}"
-    join_seg = new JoinSegment @, @_context
-    if join_func?
-      segment = @_extend(join_seg).pipe join_func
-    else
-      segment = @_extend join_seg
+    segment = @_extend new JoinSegment(@)
+    segment = segment.pipe join_func if join_func?
     @joined = true
     @_process_children() if @incoming?
     segment
 
   _clone: ->
-    clone = new SplitSegment @_context
-    clone.id = @id
+    clone = new SplitSegment()
+    clone._context = @_context
     clone.template = @template._clone() if @template?
     if @next_segment and @next_segment.constructor.name == 'JoinSegment'
       join = @next_segment._clone()
-
       clone._extend join
       clone.joined = true
       join.split_segment = clone
@@ -214,8 +209,8 @@ class SplitSegment extends Segment
 
 class JoinSegment extends Segment
 
-  constructor: (@split_segment, context) ->
-    super context
+  constructor: (@split_segment) ->
+    super()
 
   _proceed_fulfill: (data) ->
     # console.log "Join fiulfill: #{@split.id}"
@@ -233,12 +228,12 @@ class JoinSegment extends Segment
 
 class AllSegment extends Segment
 
-  constructor: (@items, context) ->
-    super context
+  constructor: (@items) ->
+    super()
 
   _proceed_fulfill: (data) ->
     results = []
-    promises = (as_promise(item, data, context) for item in @items)
+    promises = (as_promise(item, data, @_context) for item in @items)
     process = =>
       promise = promises.shift()
       return @_fulfill results unless promise?
@@ -255,12 +250,12 @@ class AllSegment extends Segment
 
 class RaceSegment extends Segment
 
-  constructor: (@items, context) ->
-    super context
+  constructor: (@items) ->
+    super()
 
   _proceed_fulfill: (data) ->
     results = []
-    promises = (as_promise(item, data, context) for item in @items)
+    promises = (as_promise(item, data, @_context) for item in @items)
     return @_fulfill undefined unless promises?.length
     complete = false
     for promise in promises

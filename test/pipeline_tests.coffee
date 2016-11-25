@@ -323,7 +323,7 @@ describe 'Pipeline Tests', ->
 
       it 'should pipe with non promise func', (done) ->
         data = {foo: 'bar'}
-        Pipeline
+        prom = Pipeline
           .source data
           .pipe (context) ->
             assign context, bar: 'baz'
@@ -332,6 +332,7 @@ describe 'Pipeline Tests', ->
             result.should.eql data
             done()
           .catch done
+        console.log "#{prom._dump_pipeline()}"
 
       it 'should pipe with multiple non promise func', (done) ->
         data = {foo: 'bar'}
