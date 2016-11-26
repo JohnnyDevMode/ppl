@@ -412,6 +412,22 @@ describe 'Pipeline Tests', ->
             done()
           .catch done
 
+      it 'should pipe with undefined func in array', (done) ->
+        data = {foo: 'bar'}
+        Pipeline
+          .source data
+          .pipe [
+            undefined
+            (data) ->
+              data.bar = 'baz'
+              data
+            undefined
+          ]
+          .then (result) ->
+            result.should.have.property 'bar'
+            done()
+          .catch done
+
       it 'should handle error', (done) ->
         data = {foo: 'bar'}
         err_msg = 'Some error occured'
@@ -599,6 +615,16 @@ describe 'Pipeline Tests', ->
             results.should.eql [31, 32, 33]
             done()
           .catch done
+
+        it 'should pipe with undefined func in array', (done) ->
+          adder = (item) -> item + 10
+          Pipeline
+            .source [1, 2, 3]
+            .pipe [undefined, addr, undefined]
+            .then (result) ->
+              results.should.eql [11, 12, 13]
+              done()
+            .catch done
 
     describe '.all', ->
 

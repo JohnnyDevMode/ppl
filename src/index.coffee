@@ -30,9 +30,8 @@ class Segment
 
   pipe: (func) ->
     if Array.isArray func
-      next = head func
-      return @ unless next?
-      @_pipe(next).pipe tail func
+      return @_pass() if func.length == 0
+      @pipe(head(func)).pipe tail func
     else if func == undefined
       @_pass()
     else
