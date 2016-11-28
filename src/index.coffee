@@ -62,7 +62,6 @@ class Segment
   extend: (segment) -> @_extend segment
 
   _extend: (segment) ->
-    # console.log "#{@constructor.name} - extending with: #{segment.constructor.name} - state: #{@state}"
     @next_segment = segment
     segment.prev_segment = @
     segment._context = @_context
@@ -134,6 +133,7 @@ class FuncSegment extends Segment
 
   _proceed_fulfill: (data) ->
     return @_fulfill data unless @fulfill_func?
+    result = undefined
     try
       result = @fulfill_func.apply @_context, [data]
     catch err
@@ -169,21 +169,16 @@ class SplitSegment extends Segment
     @joined = false
 
   extend: (segment) ->
-    # console.log "#{@constructor.name} - template set as: #{segment.constructor.name} - state: #{@state}"
     @template = segment
     segment._context = @_context
     segment._split_head = @
     segment
 
   _proceed_fulfill: (@incoming) ->
-    # console.log "Split fiulfill: #{@id}"
-    # console.log "Data: ", incoming
     throw 'Can only split on Array context!' unless Array.isArray(@incoming)
     @_process_children() if @joined
 
   _process_children: ->
-    # console.log "Split process : #{@id}"
-    # console.log "Data : ", @incoming
     for item in @incoming
       segment = Pipeline.source(item).context @_context
       segment = segment.extend(@template._clone()) if @template?
@@ -191,7 +186,6 @@ class SplitSegment extends Segment
     @_fulfill @incoming
 
   join: (join_func) ->
-    # console.log "Split join : #{@id}"
     segment = @_extend new JoinSegment(@)
     segment = segment.pipe join_func if join_func?
     @joined = true
@@ -215,17 +209,16 @@ class JoinSegment extends Segment
     super()
 
   _proceed_fulfill: (data) ->
-    # console.log "Join fiulfill: #{@split.id}"
-    # console.log "Data: ", data
     results = []
     pipes = @split_segment.child_pipes
     process = =>
       pipe = pipes.shift()
       return @_fulfill results unless pipe?
-      pipe.then (result) ->
-        results.push result
-        process()
-      pipe.catch (err) => @_reject err
+      pipe
+        .then (result) ->
+          results.push result
+          process()
+        .catch (err) => @_reject err
     process()
 
 class AllSegment extends Segment
