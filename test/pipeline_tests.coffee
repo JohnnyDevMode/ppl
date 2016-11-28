@@ -650,14 +650,21 @@ describe 'Pipeline Tests', ->
             done()
           .catch done
 
-      it 'should handle map with mixed funcs', (done) ->
+      it 'should handle map with nested proms, etc', (done) ->
+        hook = (item) ->
+          new Promise (fulfill, reject) ->
+            fulfill item + 10
         Pipeline
           .source [1, 2, 3]
-          .map [
-              (item) ->
-               Promise.resolve item + 10
-              (item) -> item + 10
-          ]
+          .pipe (items) ->
+            Pipeline
+              .source(items)
+              .map [
+                hook,
+                (item) -> item + 10
+              ]
+              .then (items) ->
+                items
           .then (results) ->
             results.should.eql [21, 22, 23]
             done()
