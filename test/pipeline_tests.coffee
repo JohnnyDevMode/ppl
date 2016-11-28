@@ -323,7 +323,7 @@ describe 'Pipeline Tests', ->
 
       it 'should pipe with non promise func', (done) ->
         data = {foo: 'bar'}
-        prom = Pipeline
+        Pipeline
           .source data
           .pipe (context) ->
             assign context, bar: 'baz'
@@ -332,7 +332,6 @@ describe 'Pipeline Tests', ->
             result.should.eql data
             done()
           .catch done
-        console.log "#{prom._dump_pipeline()}"
 
       it 'should pipe with multiple non promise func', (done) ->
         data = {foo: 'bar'}
@@ -428,7 +427,7 @@ describe 'Pipeline Tests', ->
             done()
           .catch done
 
-      it 'should handle error', (done) ->
+      it 'should handle reject error', (done) ->
         data = {foo: 'bar'}
         err_msg = 'Some error occured'
         Pipeline
@@ -441,6 +440,21 @@ describe 'Pipeline Tests', ->
             done 'Should have been an error'
           .catch (err) ->
             err.should.eql err_msg
+            done()
+
+      it 'should handle thrown error', (done) ->
+        data = {foo: 'bar'}
+        err_msg = 'Some error occured'
+        Pipeline
+          .source data
+          .pipe (data) ->
+            assign data, baz: 'qak'
+          .pipe (data) ->
+            thing.that.does.not.exist()
+          .then (result) ->
+            done 'Should have been an error'
+          .catch (err) ->
+            err.should.not.be.null
             done()
 
       it 'should handle early error', (done) ->

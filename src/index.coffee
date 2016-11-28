@@ -134,7 +134,10 @@ class FuncSegment extends Segment
 
   _proceed_fulfill: (data) ->
     return @_fulfill data unless @fulfill_func?
-    result = @fulfill_func.apply @_context, [data]
+    try
+      result = @fulfill_func.apply @_context, [data]
+    catch err
+      return @_reject err
     if result?.then?
       result
         .then (data) => @_fulfill data
