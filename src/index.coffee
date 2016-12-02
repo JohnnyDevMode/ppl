@@ -147,7 +147,10 @@ class FuncSegment extends Segment
 
   _proceed_reject: (error) ->
     return @_reject error unless @reject_func?
-    result = @reject_func.apply @_context, [error]
+    try
+      result = @reject_func.apply @_context, [error]
+    catch err
+      return @_reject err
     if result?.then?
       result
         .then (data) => @_fulfill data

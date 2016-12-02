@@ -472,6 +472,24 @@ describe 'Pipeline Tests', ->
             err.should.eql err_msg
             done()
 
+      it.only 'catch throw errors from catch block', (done) ->
+        error1 = 'Error 1'
+        error2 = 'Error 2'
+        Pipeline
+          .source {}
+          .pipe ->
+            throw error1
+          .catch (err) ->
+            err.should.eql error1
+            throw error2
+          .catch (err) ->
+            err.should.eql error2
+            throw err
+          .catch (err) ->
+            err.should.eql error2
+            done()
+
+
     describe 'split pipes', ->
 
       it 'should handle a basic split and join', (done) ->
