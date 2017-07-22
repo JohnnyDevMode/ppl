@@ -36,6 +36,47 @@ describe 'Pipeline Tests', ->
 
   describe 'Promise', ->
 
+    describe '#context', ->
+      it 'should immediately resolve', (done) ->
+        expected = foo: 'bar'
+        Promise
+          .context expected
+          .then ->
+            @.should.eql expected
+            done()
+          .catch done
+
+      it 'should resolve later', (done) ->
+        expected = foo: 'bar'
+        prom = Promise.context(expected)
+        later = ->
+          prom
+            .then ->
+              @.should.eql expected
+              done()
+            .catch done
+        setTimeout later, 10
+
+      it 'should handle empty obj', ->
+        Pipeline
+          .context {}
+          .pipe ->
+            @two = 4
+            return 6
+          .then (arg) ->
+            @two.should.equal 4
+            arg.should.equal 6
+
+      it 'should handle undefined', ->
+        Pipeline
+          .context()
+          .pipe ->
+            @two = 4
+            return 6
+          .then (arg) ->
+            @two.should.equal 4
+            arg.should.equal 6
+
     describe '#resolve', ->
 
       it 'should immediately resolve', (done) ->
@@ -472,7 +513,7 @@ describe 'Pipeline Tests', ->
             err.should.eql err_msg
             done()
 
-      it.only 'catch throw errors from catch block', (done) ->
+      it 'catch throw errors from catch block', (done) ->
         error1 = 'Error 1'
         error2 = 'Error 2'
         Pipeline

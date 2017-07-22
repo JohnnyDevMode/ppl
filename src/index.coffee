@@ -281,6 +281,12 @@ class Pipeline extends Segment
       (err) => @_reject err
     )
 
+  @context: (data) ->
+    segment = new Segment()
+    segment.context data
+    segment._fulfill()
+    segment
+
   @source: (data) ->
     segment = new Segment()
     segment._fulfill data
